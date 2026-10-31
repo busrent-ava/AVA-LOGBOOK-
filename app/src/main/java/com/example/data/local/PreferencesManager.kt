@@ -20,7 +20,7 @@ class PreferencesManager(context: Context) {
     }
 
     var backendUrl: String
-        get() = prefs.getString(KEY_BACKEND_URL, "") ?: ""
+        get() = prefs.getString(KEY_BACKEND_URL, DEFAULT_DEMO_URL)?.takeIf { it.isNotBlank() } ?: DEFAULT_DEMO_URL
         set(value) = prefs.edit().putString(KEY_BACKEND_URL, value).apply()
 
     var savedDriverId: String

@@ -10,9 +10,12 @@ import com.example.data.model.LogEntryItem
 import com.example.data.model.PendingLogEntity
 import com.example.data.repository.FleetOpsRepository
 import com.example.data.repository.SubmitResult
+import com.example.data.model.TripRouteState
 import com.example.service.ImageStamper
+import com.example.service.LocationRouteService
 import com.example.service.LocationTracker
 import com.example.service.ReminderScheduler
+import com.example.service.RouteTrackingManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -105,8 +108,13 @@ class FleetViewModel(application: Application) : AndroidViewModel(application) {
     ).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Active screen navigation
-    private val _activeTab = MutableStateFlow(0) // 0: New Log, 1: History, 2: Reminders & Buses, 3: Pending Queue
+    // 0: New Log, 1: Live Route Map, 2: History, 3: Reminders & Fleet, 4: Sync & Pending Queue
+    private val _activeTab = MutableStateFlow(0)
     val activeTab: StateFlow<Int> = _activeTab.asStateFlow()
+
+    // Real-time location route tracking state
+    val routeState: StateFlow<TripRouteState> = RouteTrackingManager.routeState
+    val isSimulationActive: StateFlow<Boolean> = RouteTrackingManager.isSimulationActive
 
     // Camera capture modal state
     private val _cameraTarget = MutableStateFlow<String?>(null) // "odo" or "receipt"
@@ -534,5 +542,52 @@ class FleetViewModel(application: Application) : AndroidViewModel(application) {
             title = "FleetOps Reminder",
             message = "Time to update your log (odometer / trip / expenses)."
         )
+    }
+
+    // Real-Time Location Route Tracking Controls
+    fun startRouteTracking(busNumber: String? = null) {
+        val bus = busNumber?.ifEmpty { null } ?: _formState.value.selectedBus.ifEmpty { "BUS-01" }
+        RouteTrackingManager.initialize(getApplication())
+        LocationRouteService.start(getApplication(), bus)
+    }
+
+    fun pauseRouteTracking() {
+        RouteTrackingManager.pauseTracking()
+    }
+
+    fun resumeRouteTracking() {
+        RouteTrackingManager.resumeTracking()
+    }
+
+    fun stopRouteTracking() {
+        LocationRouteService.stop(getApplication())
+    }
+
+    fun clearRoute() {
+        RouteTrackingManager.clearRoute()
+    }
+
+    fun toggleSimulation(busNumber: String? = null) {
+        val bus = busNumber?.ifEmpty { null } ?: _formState.value.selectedBus.ifEmpty { "BUS-01" }
+        RouteTrackingManager.initialize(getApplication())
+        RouteTrackingManager.toggleSimulation(bus)
+    }
+
+    fun applyRouteDistanceToOdometer(addedKm: Double) {
+        val bus = _formState.value.selectedBus.ifEmpty { "BUS-01" }
+        val currentLastOdo = _lastOdoMap.value[bus] ?: 0.0
+        val currentFormOdo = _formState.value.odoReading.toDoubleOrNull() ?: currentLastOdo
+        val baseOdo = if (currentFormOdo > 0) currentFormOdo else currentLastOdo
+        val newOdo = baseOdo + addedKm
+        val formattedOdo = String.format(Locale.US, "%.0f", newOdo)
+
+        _formState.value = _formState.value.copy(
+            selectedBus = bus,
+            category = LogCategory.TRIP_END,
+            odoReading = formattedOdo,
+            statusMessage = "📍 Route distance (+${String.format(Locale.US, "%.1f", addedKm)} km) applied to Odometer. Ready for photo verification & submission.",
+            isSuccessStatus = true
+        )
+        _activeTab.value = 0 // Switch to New Log screen
     }
 }

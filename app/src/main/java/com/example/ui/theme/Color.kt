@@ -3,11 +3,24 @@ package com.example.ui.theme
 import androidx.compose.ui.graphics.Color
 
 // FleetOps Primary Brand Colors
+val FleetOrangePrimary = Color(0xFFFF5722)
+val FleetOrangeHover = Color(0xFFFF6E40)
+val FleetOrangeDark = Color(0xFFE64A19)
+val FleetOrangeContainer = Color(0x33FF5722)
+
 val FleetBluePrimary = Color(0xFF0B6BCB)
 val FleetBlueDark = Color(0xFF084B91)
 val FleetBlueLight = Color(0xFF4A9EFF)
 val FleetBlueContainerLight = Color(0xFFE0EFFF)
 val FleetBlueContainerDark = Color(0xFF14345A)
+
+// Driver Dark Cockpit Theme Colors (Exact match to screenshot)
+val FleetDarkBg = Color(0xFF0B0F17)
+val FleetDarkCard = Color(0xFF131924)
+val FleetDarkCardBorder = Color(0xFF212A38)
+val FleetDarkInput = Color(0xFF0B0F17)
+val FleetDarkInputBorder = Color(0xFF1F2837)
+val FleetDarkSubtext = Color(0xFF8B98A9)
 
 // Secondary Sky Blue
 val FleetSky = Color(0xFF0284C7)

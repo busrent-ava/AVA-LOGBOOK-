@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.DirectionsBus
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.HourglassTop
+import androidx.compose.material.icons.filled.Route
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -32,6 +33,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.background
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.sp
@@ -39,13 +41,16 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.service.configureAppCheck
 import com.example.ui.components.CameraCaptureDialog
 import com.example.ui.components.ConfirmLargeOdoDialog
+import com.example.ui.components.ConsoleBottomSheet
 import com.example.ui.components.CopilotBottomSheet
 import com.example.ui.screens.HistoryScreen
+import com.example.ui.screens.LiveRouteScreen
 import com.example.ui.screens.LoginScreen
 import com.example.ui.screens.NewLogScreen
 import com.example.ui.screens.PendingQueueScreen
 import com.example.ui.screens.RemindersScreen
-import com.example.ui.theme.FleetBluePrimary
+import com.example.ui.theme.FleetDarkBg
+import com.example.ui.theme.FleetOrangePrimary
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.viewmodel.FleetViewModel
 
@@ -80,11 +85,13 @@ fun MainApp(viewModel: FleetViewModel) {
     val historyLogs by viewModel.historyLogs.collectAsStateWithLifecycle()
     val isSyncing by viewModel.isSyncing.collectAsStateWithLifecycle()
     val activeTab by viewModel.activeTab.collectAsStateWithLifecycle()
+    val routeState by viewModel.routeState.collectAsStateWithLifecycle()
+    val isSimulationActive by viewModel.isSimulationActive.collectAsStateWithLifecycle()
     val cameraTarget by viewModel.cameraTarget.collectAsStateWithLifecycle()
     val copilotResponse by viewModel.copilotResponse.collectAsStateWithLifecycle()
     val isCopilotLoading by viewModel.isCopilotLoading.collectAsStateWithLifecycle()
 
-    var showCopilotSheet by remember { mutableStateOf(false) }
+    var showConsoleSheet by remember { mutableStateOf(false) }
 
     // Request permissions (Camera, Fine Location, Notifications)
     val permissionsToRequest = buildList {
@@ -120,120 +127,61 @@ fun MainApp(viewModel: FleetViewModel) {
     } else {
         val currentSession = session!!
 
-        Scaffold(
-            bottomBar = {
-                NavigationBar {
-                    NavigationBarItem(
-                        selected = activeTab == 0,
-                        onClick = { viewModel.setActiveTab(0) },
-                        icon = {
-                            Icon(Icons.Default.DirectionsBus, contentDescription = "New Log")
-                        },
-                        label = { Text("New Log", fontSize = 11.sp) },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = FleetBluePrimary,
-                            selectedTextColor = FleetBluePrimary
-                        ),
-                        modifier = Modifier.testTag("tab_new_log")
-                    )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(FleetDarkBg)
+        ) {
+            NewLogScreen(
+                session = currentSession,
+                formState = formState,
+                buses = buses,
+                lastOdoMap = lastOdoMap,
+                gpsLocation = gpsLocation,
+                recentLogs = historyLogs,
+                pendingLogs = pendingLogs,
+                onSelectBus = viewModel::selectBus,
+                onSelectCategory = viewModel::selectCategory,
+                onOdoChange = viewModel::onOdoReadingChange,
+                onExpenseQtyChange = viewModel::onExpenseQtyChange,
+                onExpenseAmountChange = viewModel::onExpenseAmountChange,
+                onOpenCamera = viewModel::openCamera,
+                onRemovePhoto = viewModel::removePhoto,
+                onScanOdometerWithAi = viewModel::scanOdometerWithAi,
+                onScanReceiptWithAi = viewModel::scanReceiptWithAi,
+                onOpenConsole = { showConsoleSheet = true },
+                onSubmit = viewModel::submitLog,
+                onLogout = viewModel::logout
+            )
+        }
 
-                    NavigationBarItem(
-                        selected = activeTab == 1,
-                        onClick = { viewModel.setActiveTab(1) },
-                        icon = {
-                            Icon(Icons.Default.History, contentDescription = "History")
-                        },
-                        label = { Text("History", fontSize = 11.sp) },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = FleetBluePrimary,
-                            selectedTextColor = FleetBluePrimary
-                        ),
-                        modifier = Modifier.testTag("tab_history")
-                    )
-
-                    NavigationBarItem(
-                        selected = activeTab == 2,
-                        onClick = { viewModel.setActiveTab(2) },
-                        icon = {
-                            Icon(Icons.Default.Alarm, contentDescription = "Reminders")
-                        },
-                        label = { Text("Fleet", fontSize = 11.sp) },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = FleetBluePrimary,
-                            selectedTextColor = FleetBluePrimary
-                        ),
-                        modifier = Modifier.testTag("tab_reminders")
-                    )
-
-                    NavigationBarItem(
-                        selected = activeTab == 3,
-                        onClick = { viewModel.setActiveTab(3) },
-                        icon = {
-                            BadgedBox(
-                                badge = {
-                                    if (pendingLogs.isNotEmpty()) {
-                                        Badge { Text("${pendingLogs.size}") }
-                                    }
-                                }
-                            ) {
-                                Icon(Icons.Default.Sync, contentDescription = "Sync Queue")
-                            }
-                        },
-                        label = { Text("Sync", fontSize = 11.sp) },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = FleetBluePrimary,
-                            selectedTextColor = FleetBluePrimary
-                        ),
-                        modifier = Modifier.testTag("tab_pending_queue")
-                    )
-                }
-            }
-        ) { paddingValues ->
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues)
-            ) {
-                when (activeTab) {
-                    0 -> NewLogScreen(
-                        session = currentSession,
-                        formState = formState,
-                        buses = buses,
-                        lastOdoMap = lastOdoMap,
-                        gpsLocation = gpsLocation,
-                        pendingCount = pendingLogs.size,
-                        onSelectBus = viewModel::selectBus,
-                        onSelectCategory = viewModel::selectCategory,
-                        onOdoChange = viewModel::onOdoReadingChange,
-                        onExpenseQtyChange = viewModel::onExpenseQtyChange,
-                        onExpenseAmountChange = viewModel::onExpenseAmountChange,
-                        onOpenCamera = viewModel::openCamera,
-                        onRemovePhoto = viewModel::removePhoto,
-                        onScanOdometerWithAi = viewModel::scanOdometerWithAi,
-                        onScanReceiptWithAi = viewModel::scanReceiptWithAi,
-                        onOpenCopilot = { showCopilotSheet = true },
-                        onGoToPending = { viewModel.setActiveTab(3) },
-                        onSubmit = viewModel::submitLog,
-                        onLogout = viewModel::logout
-                    )
-                    1 -> HistoryScreen(
-                        logs = historyLogs,
-                        onRefresh = viewModel::refreshHistory
-                    )
-                    2 -> RemindersScreen(
-                        reminders = reminders,
-                        buses = buses,
-                        lastOdoMap = lastOdoMap,
-                        onTestNotification = viewModel::testReminderNotification
-                    )
-                    3 -> PendingQueueScreen(
-                        pendingLogs = pendingLogs,
-                        isSyncing = isSyncing,
-                        onSyncNow = viewModel::syncPendingLogs,
-                        onDeletePending = viewModel::deletePendingLog
-                    )
-                }
-            }
+        // Driver Console (Live GPS Route Map, AI Copilot, Offline Sync Queue, Reminders)
+        if (showConsoleSheet) {
+            ConsoleBottomSheet(
+                routeState = routeState,
+                buses = buses,
+                selectedBus = formState.selectedBus,
+                isSimulationActive = isSimulationActive,
+                pendingLogs = pendingLogs,
+                isSyncing = isSyncing,
+                reminders = reminders,
+                lastOdoMap = lastOdoMap,
+                copilotResponse = copilotResponse,
+                isCopilotLoading = isCopilotLoading,
+                onSelectBus = viewModel::selectBus,
+                onStartTracking = viewModel::startRouteTracking,
+                onPauseTracking = viewModel::pauseRouteTracking,
+                onResumeTracking = viewModel::resumeRouteTracking,
+                onStopTracking = viewModel::stopRouteTracking,
+                onClearRoute = viewModel::clearRoute,
+                onToggleSimulation = viewModel::toggleSimulation,
+                onApplyDistanceToOdo = viewModel::applyRouteDistanceToOdometer,
+                onSyncNow = viewModel::syncPendingLogs,
+                onDeletePending = viewModel::deletePendingLog,
+                onTestReminder = viewModel::testReminderNotification,
+                onAskCopilot = viewModel::askFleetCopilot,
+                onDismiss = { showConsoleSheet = false }
+            )
         }
 
         // Camera capture modal
@@ -254,19 +202,6 @@ fun MainApp(viewModel: FleetViewModel) {
                 odoDiff = formState.pendingSubmitOdoDiff,
                 onConfirm = viewModel::confirmLargeOdoSubmit,
                 onDismiss = viewModel::cancelLargeOdoSubmit
-            )
-        }
-
-        // AI Copilot Modal Bottom Sheet
-        if (showCopilotSheet) {
-            CopilotBottomSheet(
-                copilotResponse = copilotResponse,
-                isLoading = isCopilotLoading,
-                onAsk = viewModel::askFleetCopilot,
-                onDismiss = {
-                    showCopilotSheet = false
-                    viewModel.clearCopilotResponse()
-                }
             )
         }
     }

@@ -6,6 +6,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,44 +21,33 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DirectionsBus
-import androidx.compose.material.icons.filled.Error
-import androidx.compose.material.icons.filled.HourglassTop
-import androidx.compose.material.icons.filled.LocalGasStation
-import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.Logout
-import androidx.compose.material.icons.filled.Receipt
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Speed
-import androidx.compose.material.icons.filled.SportsScore
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.LocalShipping
+import androidx.compose.material.icons.filled.NorthEast
 import androidx.compose.material.icons.filled.Sync
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -66,22 +56,50 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.DriverSession
 import com.example.data.model.LogCategory
-import com.example.ui.theme.FleetBluePrimary
-import com.example.ui.theme.FleetError
+import com.example.data.model.LogEntryItem
+import com.example.data.model.PendingLogEntity
+import com.example.ui.theme.FleetDarkBg
+import com.example.ui.theme.FleetDarkCard
+import com.example.ui.theme.FleetDarkCardBorder
+import com.example.ui.theme.FleetDarkInput
+import com.example.ui.theme.FleetDarkInputBorder
+import com.example.ui.theme.FleetDarkSubtext
+import com.example.ui.theme.FleetOrangeContainer
+import com.example.ui.theme.FleetOrangePrimary
 import com.example.ui.theme.FleetSuccess
 import com.example.ui.theme.FleetWarning
 import com.example.ui.viewmodel.LogFormUiState
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * Driver Entry Screen:
+ * Pixel-accurate implementation matching the FleetOps Driver mobile portal design.
+ * Shows:
+ * 1. Top bar (Logo, FLEETOPS • DRIVER, driver/company name, Console button, Sign out)
+ * 2. Top stat card (BUS: BUS-01, REMINDERS: 3/day)
+ * 3. Main "New entry" card (Bus dropdown, Category chips, Odometer reading + photo, Quantity/Amount + photo, Submit entry button)
+ * 4. "Recent entry" section displaying recent logged entries for the driver.
+ */
 @Composable
 fun NewLogScreen(
     session: DriverSession,
@@ -89,7 +107,8 @@ fun NewLogScreen(
     buses: List<String>,
     lastOdoMap: Map<String, Double>,
     gpsLocation: String,
-    pendingCount: Int,
+    recentLogs: List<LogEntryItem> = emptyList(),
+    pendingLogs: List<PendingLogEntity> = emptyList(),
     onSelectBus: (String) -> Unit,
     onSelectCategory: (LogCategory) -> Unit,
     onOdoChange: (String) -> Unit,
@@ -99,179 +118,193 @@ fun NewLogScreen(
     onRemovePhoto: (String) -> Unit,
     onScanOdometerWithAi: () -> Unit,
     onScanReceiptWithAi: () -> Unit,
-    onOpenCopilot: () -> Unit,
-    onGoToPending: () -> Unit,
+    onOpenConsole: () -> Unit,
     onSubmit: () -> Unit,
     onLogout: () -> Unit
 ) {
     val scrollState = rememberScrollState()
-    var busMenuExpanded by remember { mutableStateOf(false) }
+    var busDropdownExpanded by remember { mutableStateOf(false) }
 
-    val lastRecordedOdo = lastOdoMap[formState.selectedBus] ?: 0.0
-    val currentOdoNum = formState.odoReading.toDoubleOrNull() ?: 0.0
-    val odoDifference = if (currentOdoNum > 0 && lastRecordedOdo > 0) currentOdoNum - lastRecordedOdo else 0.0
+    val activeBus = formState.selectedBus.ifEmpty { buses.firstOrNull() ?: "BUS-01" }
+    val currentDateStr = remember {
+        SimpleDateFormat("dd MMM", Locale.US).format(Date()).uppercase()
+    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(FleetDarkBg)
             .verticalScroll(scrollState)
-            .padding(16.dp)
+            .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
-        // Driver Header Profile Card
+        // 1. Top Bar (Logo, Name, Console, Sign out)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Left: Orange Icon & Title
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(FleetOrangePrimary),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.DirectionsBus,
+                        contentDescription = "FleetOps",
+                        tint = Color.White,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+
+                Spacer(Modifier.width(10.dp))
+
+                Column {
+                    Text(
+                        text = "FLEETOPS  •  DRIVER",
+                        color = FleetDarkSubtext,
+                        fontSize = 9.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.2.sp
+                    )
+                    Text(
+                        text = session.driverName.ifEmpty { "avauaebuses" },
+                        color = Color.White,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            // Right: Console button & Sign out button
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // Console Pill Button
+                Surface(
+                    onClick = onOpenConsole,
+                    shape = RoundedCornerShape(20.dp),
+                    color = FleetDarkCard,
+                    border = CardDefaults.outlinedCardBorder().copy(brush = SolidColor(Color(0xFF2E384D))),
+                    modifier = Modifier.testTag("btn_open_console")
+                ) {
+                    Text(
+                        text = "Console",
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                    )
+                }
+
+                Spacer(Modifier.width(8.dp))
+
+                // Sign Out Button
+                Surface(
+                    onClick = onLogout,
+                    shape = RoundedCornerShape(20.dp),
+                    color = Color.Transparent,
+                    modifier = Modifier.testTag("btn_driver_signout")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.Logout,
+                            contentDescription = "Sign out",
+                            tint = FleetDarkSubtext,
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            text = "Sign out",
+                            color = FleetDarkSubtext,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Normal
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(14.dp))
+
+        // 2. Top Stat Header Card (BUS | REMINDERS)
         Card(
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+            shape = RoundedCornerShape(14.dp),
+            colors = CardDefaults.cardColors(containerColor = FleetDarkCard),
+            border = CardDefaults.outlinedCardBorder().copy(brush = SolidColor(FleetDarkCardBorder)),
             modifier = Modifier.fillMaxWidth()
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                    .padding(vertical = 12.dp, horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Surface(
-                        shape = CircleShape,
-                        color = FleetBluePrimary.copy(alpha = 0.15f),
-                        modifier = Modifier.size(44.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text(
-                                text = session.driverName.take(1).uppercase(),
-                                fontWeight = FontWeight.Bold,
-                                color = FleetBluePrimary,
-                                fontSize = 18.sp
-                            )
-                        }
-                    }
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Column {
-                        Text(
-                            text = session.driverName,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = "ID: ${session.driverId}",
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Surface(
-                                shape = RoundedCornerShape(4.dp),
-                                color = FleetSuccess.copy(alpha = 0.15f)
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.LocationOn,
-                                        contentDescription = null,
-                                        tint = FleetSuccess,
-                                        modifier = Modifier.size(12.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(2.dp))
-                                    Text(
-                                        text = gpsLocation,
-                                        fontSize = 11.sp,
-                                        color = FleetSuccess,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-
-                IconButton(
-                    onClick = onLogout,
-                    modifier = Modifier.testTag("driver_logout_btn")
+                // Left Stat: BUS
+                Column(
+                    modifier = Modifier.weight(1f),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Logout,
-                        contentDescription = "Log out",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // AI Copilot & Pending Queue Quick Bar
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = FleetBluePrimary.copy(alpha = 0.12f),
-                modifier = Modifier
-                    .weight(1f)
-                    .clickable { onOpenCopilot() }
-                    .testTag("open_copilot_quick_bar")
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.AutoAwesome,
-                        contentDescription = null,
-                        tint = FleetBluePrimary,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "AI Driver Copilot",
-                        fontSize = 13.sp,
+                        text = "BUS",
+                        color = FleetDarkSubtext,
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = FleetBluePrimary
+                        letterSpacing = 1.sp
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = activeBus,
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold
                     )
                 }
-            }
 
-            if (pendingCount > 0) {
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = FleetWarning.copy(alpha = 0.15f),
+                // Divider line
+                Box(
                     modifier = Modifier
-                        .clickable { onGoToPending() }
-                        .testTag("pending_queue_badge_btn")
+                        .height(28.dp)
+                        .width(1.dp)
+                        .background(Color(0xFF212A38))
+                )
+
+                // Right Stat: REMINDERS
+                Column(
+                    modifier = Modifier.weight(1f),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.HourglassTop,
-                            contentDescription = null,
-                            tint = FleetWarning,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "$pendingCount Waiting Sync",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = FleetWarning
-                        )
-                    }
+                    Text(
+                        text = "REMINDERS",
+                        color = FleetDarkSubtext,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        letterSpacing = 1.sp
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = "${session.reminders.size.coerceAtLeast(3)}/day",
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(14.dp))
+        Spacer(Modifier.height(16.dp))
 
-        // Main Entry Card
+        // 3. Main "New entry" Card
         Card(
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            shape = RoundedCornerShape(18.dp),
+            colors = CardDefaults.cardColors(containerColor = FleetDarkCard),
+            border = CardDefaults.outlinedCardBorder().copy(brush = SolidColor(FleetDarkCardBorder)),
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(
@@ -279,499 +312,921 @@ fun NewLogScreen(
                     .fillMaxWidth()
                     .padding(18.dp)
             ) {
-                Text(
-                    text = "New Fleet Log Entry",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = "Record odometer, trip state, or fuel/maintenance expenses",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                Spacer(modifier = Modifier.height(18.dp))
-
-                // Bus Selection
-                Text(
-                    text = "Select Bus",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-
-                ExposedDropdownMenuBox(
-                    expanded = busMenuExpanded,
-                    onExpandedChange = { busMenuExpanded = !busMenuExpanded }
-                ) {
-                    OutlinedTextField(
-                        value = formState.selectedBus.ifEmpty { "Select a bus…" },
-                        onValueChange = {},
-                        readOnly = true,
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = busMenuExpanded) },
-                        leadingIcon = {
-                            Icon(Icons.Default.DirectionsBus, contentDescription = null, tint = FleetBluePrimary)
-                        },
-                        colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
-                        modifier = Modifier
-                            .menuAnchor()
-                            .fillMaxWidth()
-                            .testTag("bus_dropdown_field")
-                    )
-
-                    ExposedDropdownMenu(
-                        expanded = busMenuExpanded,
-                        onDismissRequest = { busMenuExpanded = false }
-                    ) {
-                        buses.forEach { bus ->
-                            val lastKm = lastOdoMap[bus]
-                            DropdownMenuItem(
-                                text = {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Text(bus, fontWeight = FontWeight.SemiBold)
-                                        if (lastKm != null && lastKm > 0) {
-                                            Text(
-                                                "${lastKm.toInt()} km",
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                fontSize = 12.sp
-                                            )
-                                        }
-                                    }
-                                },
-                                onClick = {
-                                    onSelectBus(bus)
-                                    busMenuExpanded = false
-                                }
-                            )
-                        }
-                    }
-                }
-
-                if (lastRecordedOdo > 0) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "Last recorded for ${formState.selectedBus}: ${lastRecordedOdo.toInt()} km",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(18.dp))
-
-                // Category Selector
-                Text(
-                    text = "Log Category",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-
+                // Card Title & Date
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    LogCategory.entries.take(2).forEach { cat ->
-                        FilterChip(
-                            selected = formState.category == cat,
-                            onClick = { onSelectCategory(cat) },
-                            label = { Text(cat.displayName, fontSize = 12.sp) },
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = if (cat == LogCategory.TRIP_START) Icons.Default.DirectionsBus else Icons.Default.SportsScore,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = FleetBluePrimary,
-                                selectedLabelColor = androidx.compose.ui.graphics.Color.White,
-                                selectedLeadingIconColor = androidx.compose.ui.graphics.Color.White
-                            ),
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag("cat_chip_${cat.name}")
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    LogCategory.entries.drop(2).forEach { cat ->
-                        FilterChip(
-                            selected = formState.category == cat,
-                            onClick = { onSelectCategory(cat) },
-                            label = { Text(cat.displayName, fontSize = 11.sp) },
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = when (cat) {
-                                        LogCategory.FUEL -> Icons.Default.LocalGasStation
-                                        LogCategory.MAINTENANCE -> Icons.Default.Warning
-                                        else -> Icons.Default.Receipt
-                                    },
-                                    contentDescription = null,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                            },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = FleetBluePrimary,
-                                selectedLabelColor = androidx.compose.ui.graphics.Color.White,
-                                selectedLeadingIconColor = androidx.compose.ui.graphics.Color.White
-                            ),
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag("cat_chip_${cat.name}")
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(18.dp))
-
-                // Odometer Reading Input
-                Text(
-                    text = "Odometer Reading (km)",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-
-                OutlinedTextField(
-                    value = formState.odoReading,
-                    onValueChange = onOdoChange,
-                    placeholder = { Text(if (lastRecordedOdo > 0) "e.g. ${(lastRecordedOdo + 45).toInt()}" else "e.g. 15420") },
-                    leadingIcon = {
-                        Icon(Icons.Default.Speed, contentDescription = null, tint = FleetBluePrimary)
-                    },
-                    trailingIcon = {
-                        Text(
-                            "km",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(end = 12.dp)
-                        )
-                    },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = FleetBluePrimary
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("odo_reading_input")
-                )
-
-                if (odoDifference != 0.0) {
-                    Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = if (odoDifference > 0) "+${odoDifference.toInt()} km since last log" else "Warning: ${odoDifference.toInt()} km below last log!",
-                        fontSize = 12.sp,
-                        color = if (odoDifference > 0) FleetSuccess else FleetError,
-                        fontWeight = FontWeight.Medium
+                        text = "New entry",
+                        color = Color.White,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = currentDateStr,
+                        color = FleetDarkSubtext,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        letterSpacing = 0.8.sp
                     )
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(Modifier.height(16.dp))
 
-                // Odometer Photo Capture Section
+                // BUS Label & Dropdown
                 Text(
-                    text = "Odometer Photo (Camera Required)",
-                    fontSize = 13.sp,
+                    text = "BUS",
+                    color = FleetDarkSubtext,
+                    fontSize = 10.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface
+                    letterSpacing = 0.8.sp
                 )
-                Spacer(modifier = Modifier.height(6.dp))
-
-                if (formState.odoBitmap == null) {
-                    OutlinedButton(
-                        onClick = { onOpenCamera("odo") },
-                        shape = RoundedCornerShape(12.dp),
+                Spacer(Modifier.height(6.dp))
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(48.dp)
-                            .testTag("take_odo_photo_btn")
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(FleetDarkInput)
+                            .border(1.dp, FleetDarkInputBorder, RoundedCornerShape(10.dp))
+                            .clickable { busDropdownExpanded = true }
+                            .padding(horizontal = 14.dp)
+                            .testTag("bus_selector_dropdown"),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("📷 Take Odometer Photo", fontWeight = FontWeight.SemiBold)
+                        Text(
+                            text = activeBus,
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Icon(
+                            Icons.Default.KeyboardArrowDown,
+                            contentDescription = "Select Bus",
+                            tint = FleetDarkSubtext,
+                            modifier = Modifier.size(20.dp)
+                        )
                     }
-                } else {
-                    // Preview card of captured odometer
-                    Card(
-                        shape = RoundedCornerShape(12.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
-                        modifier = Modifier.fillMaxWidth()
+
+                    DropdownMenu(
+                        expanded = busDropdownExpanded,
+                        onDismissRequest = { busDropdownExpanded = false },
+                        modifier = Modifier
+                            .background(FleetDarkCard)
+                            .border(1.dp, FleetDarkCardBorder, RoundedCornerShape(8.dp))
                     ) {
-                        Column(modifier = Modifier.padding(10.dp)) {
-                            Image(
-                                bitmap = formState.odoBitmap.asImageBitmap(),
-                                contentDescription = "Captured Odometer Photo",
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(180.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = Icons.Default.CheckCircle,
-                                        contentDescription = null,
-                                        tint = FleetSuccess,
-                                        modifier = Modifier.size(16.dp)
+                        buses.forEach { bus ->
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = bus,
+                                        color = if (bus == activeBus) FleetOrangePrimary else Color.White,
+                                        fontWeight = if (bus == activeBus) FontWeight.Bold else FontWeight.Normal
                                     )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Captured & Watermarked", fontSize = 12.sp, color = FleetSuccess)
+                                },
+                                onClick = {
+                                    onSelectBus(bus)
+                                    busDropdownExpanded = false
                                 }
-
-                                Row {
-                                    // Gemini AI Auto-detect Odometer
-                                    Button(
-                                        onClick = onScanOdometerWithAi,
-                                        enabled = !formState.isAiScanningOdo,
-                                        shape = RoundedCornerShape(8.dp),
-                                        colors = ButtonDefaults.buttonColors(containerColor = FleetBluePrimary),
-                                        modifier = Modifier
-                                            .height(34.dp)
-                                            .testTag("ai_scan_odo_btn")
-                                    ) {
-                                        if (formState.isAiScanningOdo) {
-                                            CircularProgressIndicator(
-                                                color = androidx.compose.ui.graphics.Color.White,
-                                                modifier = Modifier.size(14.dp),
-                                                strokeWidth = 2.dp
-                                            )
-                                        } else {
-                                            Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(14.dp))
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text("AI OCR", fontSize = 11.sp)
-                                        }
-                                    }
-
-                                    Spacer(modifier = Modifier.width(6.dp))
-
-                                    IconButton(
-                                        onClick = { onRemovePhoto("odo") },
-                                        modifier = Modifier.size(34.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Delete,
-                                            contentDescription = "Remove Photo",
-                                            tint = FleetError,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                    }
-                                }
-                            }
+                            )
                         }
                     }
                 }
 
-                // Expense Fields (Only for Fuel, Maintenance, Other Expense)
-                AnimatedVisibility(visible = !formState.category.isTrip) {
-                    Column(modifier = Modifier.padding(top = 16.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
+                Spacer(Modifier.height(16.dp))
+
+                // CATEGORY Label & Chips
+                Text(
+                    text = "CATEGORY",
+                    color = FleetDarkSubtext,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 0.8.sp
+                )
+                Spacer(Modifier.height(8.dp))
+
+                // Row 1: Trip Start, Trip End, Fuel, Maintenance
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    CategoryPill(
+                        category = LogCategory.TRIP_START,
+                        selected = formState.category == LogCategory.TRIP_START,
+                        onClick = { onSelectCategory(LogCategory.TRIP_START) },
+                        modifier = Modifier.weight(1f)
+                    )
+                    CategoryPill(
+                        category = LogCategory.TRIP_END,
+                        selected = formState.category == LogCategory.TRIP_END,
+                        onClick = { onSelectCategory(LogCategory.TRIP_END) },
+                        modifier = Modifier.weight(1f)
+                    )
+                    CategoryPill(
+                        category = LogCategory.FUEL,
+                        selected = formState.category == LogCategory.FUEL,
+                        onClick = { onSelectCategory(LogCategory.FUEL) },
+                        modifier = Modifier.weight(0.8f)
+                    )
+                    CategoryPill(
+                        category = LogCategory.MAINTENANCE,
+                        selected = formState.category == LogCategory.MAINTENANCE,
+                        onClick = { onSelectCategory(LogCategory.MAINTENANCE) },
+                        modifier = Modifier.weight(1.3f)
+                    )
+                }
+
+                Spacer(Modifier.height(8.dp))
+
+                // Row 2: Other Expense
+                Row {
+                    CategoryPill(
+                        category = LogCategory.OTHER_EXPENSE,
+                        selected = formState.category == LogCategory.OTHER_EXPENSE,
+                        onClick = { onSelectCategory(LogCategory.OTHER_EXPENSE) }
+                    )
+                }
+
+                Spacer(Modifier.height(16.dp))
+
+                // ODOMETER READING Label & Input Box
+                Text(
+                    text = "ODOMETER READING",
+                    color = FleetDarkSubtext,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 0.8.sp
+                )
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(FleetDarkInput)
+                        .border(1.dp, FleetDarkInputBorder, RoundedCornerShape(10.dp))
+                        .padding(horizontal = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    BasicTextField(
+                        value = formState.odoReading,
+                        onValueChange = onOdoChange,
+                        textStyle = TextStyle(
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Medium
+                        ),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        cursorBrush = SolidColor(FleetOrangePrimary),
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("input_odometer_reading"),
+                        decorationBox = { innerTextField ->
+                            if (formState.odoReading.isEmpty()) {
                                 Text(
-                                    text = if (formState.category == LogCategory.FUEL) "Fuel Litres" else "Quantity / Items",
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                OutlinedTextField(
-                                    value = formState.expenseQty,
-                                    onValueChange = onExpenseQtyChange,
-                                    placeholder = { Text(if (formState.category == LogCategory.FUEL) "e.g. 60" else "e.g. 1") },
-                                    singleLine = true,
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .testTag("expense_qty_input")
+                                    text = "128450",
+                                    color = Color(0xFF4A5568),
+                                    fontSize = 14.sp,
+                                    fontFamily = FontFamily.Monospace
                                 )
                             }
+                            innerTextField()
+                        }
+                    )
 
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Amount (AED) *",
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.SemiBold
+                    // Optional AI OCR Scan button
+                    if (formState.odoBitmap != null) {
+                        IconButton(
+                            onClick = onScanOdometerWithAi,
+                            modifier = Modifier
+                                .size(28.dp)
+                                .testTag("btn_ai_scan_odo_quick")
+                        ) {
+                            if (formState.isAiScanningOdo) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(14.dp),
+                                    strokeWidth = 2.dp,
+                                    color = FleetOrangePrimary
                                 )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                OutlinedTextField(
-                                    value = formState.expenseAmount,
-                                    onValueChange = onExpenseAmountChange,
-                                    placeholder = { Text("e.g. 210.50") },
-                                    singleLine = true,
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .testTag("expense_amt_input")
+                            } else {
+                                Icon(
+                                    Icons.Default.AutoAwesome,
+                                    contentDescription = "Scan with Gemini",
+                                    tint = FleetOrangePrimary,
+                                    modifier = Modifier.size(16.dp)
                                 )
                             }
                         }
+                        Spacer(Modifier.width(6.dp))
+                    }
 
-                        Spacer(modifier = Modifier.height(14.dp))
+                    Text(
+                        text = "km",
+                        color = FleetDarkSubtext,
+                        fontSize = 13.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
 
-                        // Receipt Photo Section
-                        Text(
-                            text = "Receipt Photo (Camera Required for Expenses)",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
+                Spacer(Modifier.height(16.dp))
 
-                        if (formState.receiptBitmap == null) {
-                            OutlinedButton(
-                                onClick = { onOpenCamera("rc") },
-                                shape = RoundedCornerShape(12.dp),
+                // ODOMETER PHOTO Label & Box
+                Text(
+                    text = "ODOMETER PHOTO",
+                    color = FleetDarkSubtext,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 0.8.sp
+                )
+                Spacer(Modifier.height(6.dp))
+
+                if (formState.odoBitmap == null) {
+                    // Dashed Camera Box
+                    DashedPhotoUploadBox(
+                        label = "Take photo",
+                        onClick = { onOpenCamera("odo") },
+                        modifier = Modifier.testTag("btn_take_odo_photo")
+                    )
+                } else {
+                    // Stamped Image Preview Card
+                    CapturedPhotoPreview(
+                        bitmap = formState.odoBitmap,
+                        title = "Odometer Verified",
+                        onRetake = { onOpenCamera("odo") },
+                        onRemove = { onRemovePhoto("odo") },
+                        onAiScan = onScanOdometerWithAi,
+                        isAiScanning = formState.isAiScanningOdo
+                    )
+                }
+
+                // If Category is Expense: Quantity & Amount + Receipt Photo
+                if (!formState.category.isTrip) {
+                    Spacer(Modifier.height(16.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        // QUANTITY
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "QUANTITY",
+                                color = FleetDarkSubtext,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                letterSpacing = 0.8.sp
+                            )
+                            Spacer(Modifier.height(6.dp))
+                            Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(48.dp)
-                                    .testTag("take_receipt_photo_btn")
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(FleetDarkInput)
+                                    .border(1.dp, FleetDarkInputBorder, RoundedCornerShape(10.dp))
+                                    .padding(horizontal = 14.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("📷 Take Receipt Photo", fontWeight = FontWeight.SemiBold)
-                            }
-                        } else {
-                            Card(
-                                shape = RoundedCornerShape(12.dp),
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Column(modifier = Modifier.padding(10.dp)) {
-                                    Image(
-                                        bitmap = formState.receiptBitmap.asImageBitmap(),
-                                        contentDescription = "Receipt Photo",
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(180.dp)
-                                            .clip(RoundedCornerShape(8.dp))
-                                    )
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text("Receipt Stamped & Attached", fontSize = 12.sp, color = FleetSuccess)
-                                        Row {
-                                            // Gemini AI parse receipt
-                                            Button(
-                                                onClick = onScanReceiptWithAi,
-                                                enabled = !formState.isAiScanningReceipt,
-                                                shape = RoundedCornerShape(8.dp),
-                                                colors = ButtonDefaults.buttonColors(containerColor = FleetBluePrimary),
-                                                modifier = Modifier
-                                                    .height(34.dp)
-                                                    .testTag("ai_scan_receipt_btn")
-                                            ) {
-                                                if (formState.isAiScanningReceipt) {
-                                                    CircularProgressIndicator(
-                                                        color = androidx.compose.ui.graphics.Color.White,
-                                                        modifier = Modifier.size(14.dp),
-                                                        strokeWidth = 2.dp
-                                                    )
-                                                } else {
-                                                    Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(14.dp))
-                                                    Spacer(modifier = Modifier.width(4.dp))
-                                                    Text("AI Parse", fontSize = 11.sp)
-                                                }
-                                            }
-
-                                            Spacer(modifier = Modifier.width(6.dp))
-
-                                            IconButton(
-                                                onClick = { onRemovePhoto("rc") },
-                                                modifier = Modifier.size(34.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Delete,
-                                                    contentDescription = "Remove Receipt",
-                                                    tint = FleetError,
-                                                    modifier = Modifier.size(18.dp)
-                                                )
-                                            }
+                                BasicTextField(
+                                    value = formState.expenseQty,
+                                    onValueChange = onExpenseQtyChange,
+                                    textStyle = TextStyle(
+                                        color = Color.White,
+                                        fontSize = 14.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.Medium
+                                    ),
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                    cursorBrush = SolidColor(FleetOrangePrimary),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("input_expense_quantity"),
+                                    decorationBox = { innerTextField ->
+                                        if (formState.expenseQty.isEmpty()) {
+                                            Text(
+                                                text = "Litres / items",
+                                                color = Color(0xFF4A5568),
+                                                fontSize = 13.sp
+                                            )
                                         }
+                                        innerTextField()
                                     }
-                                }
+                                )
+                            }
+                        }
+
+                        // AMOUNT
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "AMOUNT",
+                                color = FleetDarkSubtext,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                letterSpacing = 0.8.sp
+                            )
+                            Spacer(Modifier.height(6.dp))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(48.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(FleetDarkInput)
+                                    .border(1.dp, FleetDarkInputBorder, RoundedCornerShape(10.dp))
+                                    .padding(horizontal = 14.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "AED ",
+                                    color = FleetDarkSubtext,
+                                    fontSize = 13.sp,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                                BasicTextField(
+                                    value = formState.expenseAmount,
+                                    onValueChange = onExpenseAmountChange,
+                                    textStyle = TextStyle(
+                                        color = Color.White,
+                                        fontSize = 14.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.Medium
+                                    ),
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                    cursorBrush = SolidColor(FleetOrangePrimary),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("input_expense_amount"),
+                                    decorationBox = { innerTextField ->
+                                        if (formState.expenseAmount.isEmpty()) {
+                                            Text(
+                                                text = "0.00",
+                                                color = Color(0xFF4A5568),
+                                                fontSize = 14.sp,
+                                                fontFamily = FontFamily.Monospace
+                                            )
+                                        }
+                                        innerTextField()
+                                    }
+                                )
                             }
                         }
                     }
+
+                    Spacer(Modifier.height(16.dp))
+
+                    // RECEIPT PHOTO Label & Box
+                    Text(
+                        text = "RECEIPT PHOTO",
+                        color = FleetDarkSubtext,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        letterSpacing = 0.8.sp
+                    )
+                    Spacer(Modifier.height(6.dp))
+
+                    if (formState.receiptBitmap == null) {
+                        DashedPhotoUploadBox(
+                            label = "Take photo",
+                            onClick = { onOpenCamera("receipt") },
+                            modifier = Modifier.testTag("btn_take_receipt_photo")
+                        )
+                    } else {
+                        CapturedPhotoPreview(
+                            bitmap = formState.receiptBitmap,
+                            title = "Receipt Verified",
+                            onRetake = { onOpenCamera("receipt") },
+                            onRemove = { onRemovePhoto("receipt") },
+                            onAiScan = onScanReceiptWithAi,
+                            isAiScanning = formState.isAiScanningReceipt
+                        )
+                    }
                 }
 
-                // Status Message Banner
-                if (!formState.statusMessage.isNullOrBlank()) {
-                    Spacer(modifier = Modifier.height(16.dp))
+                // Status banner if present
+                if (formState.statusMessage != null) {
+                    Spacer(Modifier.height(14.dp))
                     Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = if (formState.isSuccessStatus) FleetSuccess.copy(alpha = 0.12f) else FleetError.copy(alpha = 0.12f),
+                        color = if (formState.isSuccessStatus) FleetSuccess.copy(alpha = 0.15f) else Color(0x33EF4444),
+                        shape = RoundedCornerShape(8.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = if (formState.isSuccessStatus) Icons.Default.CheckCircle else Icons.Default.Error,
-                                contentDescription = null,
-                                tint = if (formState.isSuccessStatus) FleetSuccess else FleetError,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = formState.statusMessage,
-                                color = if (formState.isSuccessStatus) FleetSuccess else FleetError,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
+                        Text(
+                            text = formState.statusMessage,
+                            color = if (formState.isSuccessStatus) FleetSuccess else Color(0xFFF87171),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                        )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(22.dp))
+                Spacer(Modifier.height(20.dp))
 
-                // Submit Button
+                // Submit Entry Button (Vibrant Orange Button with ↗ Arrow)
                 Button(
                     onClick = onSubmit,
                     enabled = !formState.isSubmitting,
-                    shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = FleetBluePrimary),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = FleetOrangePrimary,
+                        disabledContainerColor = FleetOrangePrimary.copy(alpha = 0.5f)
+                    ),
+                    shape = RoundedCornerShape(12.dp),
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(52.dp)
-                        .testTag("submit_log_entry_button")
+                        .testTag("btn_submit_entry")
                 ) {
                     if (formState.isSubmitting) {
                         CircularProgressIndicator(
-                            color = androidx.compose.ui.graphics.Color.White,
-                            modifier = Modifier.size(22.dp),
-                            strokeWidth = 2.dp
+                            color = Color.White,
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.5.dp
                         )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Text("Submitting…", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = "Submitting…",
+                            color = Color.White,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     } else {
-                        Text("Submit Log Entry", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Icon(
+                            imageVector = Icons.Default.NorthEast,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = "Submit entry",
+                            color = Color.White,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(18.dp))
+
+        // 4. "Recent entry" Section (Requested explicitly by user)
+        RecentEntriesSection(
+            activeBus = activeBus,
+            recentLogs = recentLogs,
+            pendingLogs = pendingLogs
+        )
+
+        Spacer(Modifier.height(24.dp))
+    }
+}
+
+/**
+ * Category Pill Chip matching screenshot:
+ * Unselected: dark surface with subtle border.
+ * Selected: orange border, orange background tint, white text.
+ */
+@Composable
+private fun CategoryPill(
+    category: LogCategory,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(20.dp),
+        color = if (selected) Color(0x28FF5722) else Color(0xFF131924),
+        border = BorderStrokeOrNull(
+            width = if (selected) 1.5.dp else 1.dp,
+            color = if (selected) FleetOrangePrimary else Color(0xFF242E3E)
+        ),
+        modifier = modifier.testTag("chip_cat_${category.name}")
+    ) {
+        Text(
+            text = category.displayName,
+            color = if (selected) Color.White else Color(0xFFCBD5E1),
+            fontSize = 11.5.sp,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
+        )
+    }
+}
+
+/**
+ * Dashed photo box matching `[o] Take photo` in the screenshot.
+ */
+@Composable
+private fun DashedPhotoUploadBox(
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(54.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(FleetDarkInput)
+            .dashedBorder(
+                width = 1.dp,
+                color = Color(0xFF2E3B50),
+                cornerRadius = 10.dp
+            )
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = Icons.Default.CameraAlt,
+                contentDescription = null,
+                tint = FleetDarkSubtext,
+                modifier = Modifier.size(17.dp)
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = label,
+                color = FleetDarkSubtext,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium
+            )
+        }
+    }
+}
+
+/**
+ * Captured photo preview with watermark indicator and Retake/AI actions.
+ */
+@Composable
+private fun CapturedPhotoPreview(
+    bitmap: Bitmap,
+    title: String,
+    onRetake: () -> Unit,
+    onRemove: () -> Unit,
+    onAiScan: () -> Unit,
+    isAiScanning: Boolean
+) {
+    Card(
+        shape = RoundedCornerShape(10.dp),
+        colors = CardDefaults.cardColors(containerColor = FleetDarkInput),
+        border = CardDefaults.outlinedCardBorder().copy(brush = SolidColor(Color(0xFF212A38))),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Image(
+                bitmap = bitmap.asImageBitmap(),
+                contentDescription = title,
+                modifier = Modifier
+                    .size(54.dp)
+                    .clip(RoundedCornerShape(8.dp)),
+                contentScale = ContentScale.Crop
+            )
+
+            Spacer(Modifier.width(10.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Default.CheckCircle,
+                        contentDescription = null,
+                        tint = FleetSuccess,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        text = title,
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+                Text(
+                    text = "GPS & Timestamp Watermarked",
+                    color = FleetDarkSubtext,
+                    fontSize = 10.sp
+                )
+            }
+
+            // AI Scan button
+            IconButton(
+                onClick = onAiScan,
+                modifier = Modifier.size(32.dp)
+            ) {
+                if (isAiScanning) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                        color = FleetOrangePrimary
+                    )
+                } else {
+                    Icon(
+                        Icons.Default.AutoAwesome,
+                        contentDescription = "AI Scan",
+                        tint = FleetOrangePrimary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+
+            // Retake
+            TextButton(
+                onClick = onRetake,
+                modifier = Modifier.padding(horizontal = 2.dp)
+            ) {
+                Text("Retake", color = FleetOrangePrimary, fontSize = 12.sp)
+            }
+
+            // Remove
+            IconButton(
+                onClick = onRemove,
+                modifier = Modifier.size(28.dp)
+            ) {
+                Icon(
+                    Icons.Default.Delete,
+                    contentDescription = "Delete",
+                    tint = Color(0xFFEF4444),
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        }
+    }
+}
+
+/**
+ * "Recent entry" section matching the user's explicit specification:
+ * "Driver app only needed to see this and recent entry."
+ */
+@Composable
+private fun RecentEntriesSection(
+    activeBus: String,
+    recentLogs: List<LogEntryItem>,
+    pendingLogs: List<PendingLogEntity>
+) {
+    Card(
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = FleetDarkCard),
+        border = CardDefaults.outlinedCardBorder().copy(brush = SolidColor(FleetDarkCardBorder)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(18.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Recent entry",
+                    color = Color.White,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
+
+                if (pendingLogs.isNotEmpty()) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = FleetWarning.copy(alpha = 0.15f)
+                    ) {
+                        Text(
+                            text = "${pendingLogs.size} queued",
+                            color = FleetWarning,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            // Show pending logs first if any
+            if (pendingLogs.isEmpty() && recentLogs.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "No recent entries recorded yet.",
+                        color = FleetDarkSubtext,
+                        fontSize = 13.sp
+                    )
+                }
+            } else {
+                // Show offline pending logs at the top
+                pendingLogs.take(2).forEach { pending ->
+                    PendingLogSummaryRow(pending)
+                    Spacer(Modifier.height(8.dp))
+                }
+
+                // Show verified historical logs
+                val displayLogs = recentLogs.take(4)
+                displayLogs.forEach { log ->
+                    RecentLogSummaryRow(log)
+                    Spacer(Modifier.height(8.dp))
                 }
             }
         }
     }
 }
+
+@Composable
+private fun PendingLogSummaryRow(pending: PendingLogEntity) {
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = FleetDarkInput,
+        border = CardDefaults.outlinedCardBorder().copy(brush = SolidColor(Color(0xFF2A2418))),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = Color(0x33F59E0B)
+                    ) {
+                        Text(
+                            text = pending.category,
+                            color = FleetWarning,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = pending.busNumber,
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Spacer(Modifier.height(4.dp))
+
+                Text(
+                    text = if (pending.expenseAmount.isNotBlank()) {
+                        "${pending.odoReading} km • AED ${pending.expenseAmount}"
+                    } else {
+                        "${pending.odoReading} km"
+                    },
+                    color = FleetDarkSubtext,
+                    fontSize = 12.sp,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = FleetWarning.copy(alpha = 0.2f)
+            ) {
+                Text(
+                    text = "Waiting sync",
+                    color = FleetWarning,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RecentLogSummaryRow(log: LogEntryItem) {
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = FleetDarkInput,
+        border = CardDefaults.outlinedCardBorder().copy(brush = SolidColor(FleetDarkInputBorder)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    val catColor = when (log.category.lowercase()) {
+                        "trip start", "trip end" -> Color(0xFF38BDF8)
+                        "fuel" -> Color(0xFFA855F7)
+                        else -> FleetOrangePrimary
+                    }
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = catColor.copy(alpha = 0.15f)
+                    ) {
+                        Text(
+                            text = log.category.ifEmpty { "Log" },
+                            color = catColor,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+
+                    Spacer(Modifier.width(8.dp))
+
+                    Text(
+                        text = log.busNumber.ifEmpty { "BUS" },
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Spacer(Modifier.height(4.dp))
+
+                Text(
+                    text = buildString {
+                        if (log.odoReading.isNotBlank()) append("${log.odoReading} km")
+                        if (!log.expenseAmount.isNullOrBlank()) {
+                            if (isNotEmpty()) append(" • ")
+                            append("AED ${log.expenseAmount}")
+                        }
+                    },
+                    color = Color(0xFFCBD5E1),
+                    fontSize = 12.sp,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+
+            Column(horizontalAlignment = Alignment.End) {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = FleetSuccess.copy(alpha = 0.15f)
+                ) {
+                    Text(
+                        text = "Synced",
+                        color = FleetSuccess,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                    )
+                }
+
+                if (log.timestamp.isNotBlank()) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = log.timestamp.take(16).replace("T", " "),
+                        color = FleetDarkSubtext,
+                        fontSize = 10.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Helper to apply a dashed border using Canvas DrawScope.
+ */
+private fun Modifier.dashedBorder(
+    width: Dp = 1.dp,
+    color: Color = Color(0xFF2E384D),
+    cornerRadius: Dp = 10.dp,
+    dashLength: Float = 14f,
+    gapLength: Float = 10f
+): Modifier = this.drawBehind {
+    val stroke = Stroke(
+        width = width.toPx(),
+        pathEffect = PathEffect.dashPathEffect(floatArrayOf(dashLength, gapLength), 0f)
+    )
+    val r = cornerRadius.toPx()
+    drawRoundRect(
+        color = color,
+        size = size,
+        cornerRadius = CornerRadius(r, r),
+        style = stroke
+    )
+}
+
+@Composable
+private fun BorderStrokeOrNull(width: Dp, color: Color) =
+    androidx.compose.foundation.BorderStroke(width, color)

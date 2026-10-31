@@ -17,22 +17,22 @@ import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
 private val DarkColorScheme = darkColorScheme(
-    primary = FleetBlueLight,
-    onPrimary = Color(0xFF003062),
-    primaryContainer = FleetBlueContainerDark,
-    onPrimaryContainer = Color(0xFFD6E4FF),
+    primary = FleetOrangePrimary,
+    onPrimary = Color.White,
+    primaryContainer = FleetOrangeContainer,
+    onPrimaryContainer = Color(0xFFFFDBCF),
     secondary = FleetSkyLight,
     onSecondary = Color(0xFF00344F),
     secondaryContainer = Color(0xFF004C70),
     onSecondaryContainer = Color(0xFFCBE6FF),
     tertiary = FleetTealLight,
-    background = FleetBgDark,
-    onBackground = FleetTextPrimaryDark,
-    surface = FleetSurfaceDark,
-    onSurface = FleetTextPrimaryDark,
-    surfaceVariant = FleetSurfaceVariantDark,
-    onSurfaceVariant = FleetTextMutedDark,
-    outline = FleetBorderDark,
+    background = FleetDarkBg,
+    onBackground = Color.White,
+    surface = FleetDarkCard,
+    onSurface = Color.White,
+    surfaceVariant = FleetDarkInput,
+    onSurfaceVariant = FleetDarkSubtext,
+    outline = FleetDarkCardBorder,
     error = FleetError
 )
 
@@ -58,8 +58,8 @@ private val LightColorScheme = lightColorScheme(
 
 @Composable
 fun MyApplicationTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = false, // Use FleetOps brand colors by default for consistent fleet identity
+    darkTheme: Boolean = true, // Default to FleetOps dark cockpit theme as specified
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {
