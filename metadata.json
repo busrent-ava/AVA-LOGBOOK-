@@ -1,0 +1,12 @@
+{
+  "name": "FleetOps Driver",
+  "description": "FleetOps Pro Driver app for bus and fleet drivers to log trips, odometer readings, and expenses with camera verification, GPS watermarking, offline sync, and shift reminders.",
+  "requestFramePermissions": [
+    "android.permission.CAMERA",
+    "android.permission.ACCESS_FINE_LOCATION",
+    "android.permission.ACCESS_COARSE_LOCATION"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
